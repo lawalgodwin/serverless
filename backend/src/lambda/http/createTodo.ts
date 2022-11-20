@@ -20,8 +20,12 @@ const createTodoHandler: APIGatewayProxyHandler = async (
   logger.info('Caller event', event)
 
   const userId = getUserId(event)
-  const createTodoRequest = JSON.parse(event.body || '') as CreateTodoRequest
-  const item = await createTodoItem(userId, createTodoRequest)
+  const payload = JSON.parse(event.body || '') as CreateTodoRequest
+  if (!payload.name) {
+
+    throw new Error("Please specify a name");
+  }
+  const item = await createTodoItem(userId, payload)
 
   logger.info('Todo item was created', { userId, todoId: item.todoId })
 
