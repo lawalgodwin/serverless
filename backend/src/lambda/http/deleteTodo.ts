@@ -1,44 +1,40 @@
 import 'source-map-support/register'
 
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
+import {
+  APIGatewayProxyEvent,
+  APIGatewayProxyResult,
+  APIGatewayProxyHandler
+} from 'aws-lambda'
 import * as middy from 'middy'
-import { cors, httpErrorHandler } from 'middy/middlewares'
-import { deleteTodo } from '../../businessLayer/ToDo'
+import { cors } from 'middy/middlewares'
+import { deleteTodoItem } from '../../businessLogic/todoItems'
 import { getUserId } from '../utils'
 import { createLogger } from '../../utils/logger'
 
-const logger = createLogger('deleteTod')
-export const handler = middy(
-  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    try {
-      const todoId = event.pathParameters.todoId
-      logger.info('processing event', event)
+const logger = createLogger('deleteTodo')
 
-      const userId = getUserId(event)
-      await deleteTodo(userId, todoId)
+export const deleteTodoHandler: APIGatewayProxyHandler = async (
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> => {
+  logger.info('Caller event', event)
 
-      return {
-        statusCode: 200,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Credentials': true
-        },
-        body: ''
-      }
-    } catch (error) {
-      return {
-        statusCode: error?.statusCode || 400,
-
-        body: JSON.stringify({
-          message: error?.message || 'error while trying to delete todo'
-        })
-      }
+  const userId = getUserId(event)
+  const todoId = event.pathParameters?.todoId
+  if (!todoId) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: 'Invalid todoId parameter' })
     }
   }
-)
 
-handler.use(httpErrorHandler()).use(
-  cors({
-    credentials: true
-  })
-)
+  await deleteTodoItem(userId, todoId)
+
+  logger.info('Todo item was deleted', { userId, todoId })
+
+  return {
+    statusCode: 200,
+    body: ''
+  }
+}
+
+export const handler = middy(deleteTodoHandler).use(cors({ credenials: true }))

@@ -1,43 +1,52 @@
 import 'source-map-support/register'
 
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
+import {
+  APIGatewayProxyEvent,
+  APIGatewayProxyHandler,
+  APIGatewayProxyResult
+} from 'aws-lambda'
 import * as middy from 'middy'
-import { cors, httpErrorHandler } from 'middy/middlewares'
-
+import { cors } from 'middy/middlewares'
 import { UpdateTodoRequest } from '../../requests/UpdateTodoRequest'
+import { updateTodoItem } from '../../businessLogic/todoItems'
 import { getUserId } from '../utils'
-import { updateTodos } from '../../businessLayer/ToDo'
+import { createLogger } from '../../utils/logger'
 
-export const handler = middy(
-  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    try {
-      const todoId = event.pathParameters.todoId
-      const updatedTodo: UpdateTodoRequest = JSON.parse(event.body)
-      const userId = getUserId(event)
-      await updateTodos(userId, todoId, updatedTodo)
+const logger = createLogger('updateTodo')
 
-      return {
-        statusCode: 204,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Credentials': true
-        },
-        body: JSON.stringify({})
-      }
-    } catch (error) {
-      return {
-        statusCode: error?.statusCode || 400,
+const updateTodoHandler: APIGatewayProxyHandler = async function (
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> {
+  logger.info('Caller event', event)
 
-        body: JSON.stringify({
-          message: error?.message || 'error while trying to update todo'
-        })
-      }
+  const userId = getUserId(event)
+  const todoId = event.pathParameters?.todoId
+  const updateTodoRequest = JSON.parse(event.body || '') as UpdateTodoRequest
+
+  if (!todoId) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: 'Invalid todoId parameter' })
     }
   }
-)
 
-handler.use(httpErrorHandler()).use(
-  cors({
-    credentials: true
-  })
-)
+  const updated = await updateTodoItem(userId, todoId, updateTodoRequest)
+  if (!updated) {
+    logger.info('Todo item does not exist', { userId, todoId })
+    return {
+      statusCode: 404,
+      body: JSON.stringify({
+        error: 'Todo item does not exist'
+      })
+    }
+  }
+
+  logger.info('Todo item was updated', { userId, todoId })
+
+  return {
+    statusCode: 200,
+    body: ''
+  }
+}
+
+export const handler = middy(updateTodoHandler).use(cors({ credenials: true }))

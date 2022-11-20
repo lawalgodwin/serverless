@@ -1,43 +1,34 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 import 'source-map-support/register'
+
+import {
+  APIGatewayProxyEvent,
+  APIGatewayProxyHandler,
+  APIGatewayProxyResult
+} from 'aws-lambda'
 import * as middy from 'middy'
 import { cors } from 'middy/middlewares'
 import { CreateTodoRequest } from '../../requests/CreateTodoRequest'
+import { createTodoItem } from '../../businessLogic/todoItems'
 import { getUserId } from '../utils'
+import { createLogger } from '../../utils/logger'
 
-import { createTodo } from '../../businessLayer/ToDo'
-export const handler = middy(
-  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    try {
-      const newTodo: CreateTodoRequest = JSON.parse(event.body)
+const logger = createLogger('createTodo')
 
-      const userId = getUserId(event)
-      const todo = await createTodo(newTodo, userId)
+const createTodoHandler: APIGatewayProxyHandler = async (
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> => {
+  logger.info('Caller event', event)
 
-      return {
-        statusCode: 201,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Credentials': true
-        },
-        body: JSON.stringify({
-          item: todo
-        })
-      }
-    } catch ( error ) {
-       return {
-         statusCode: error?.statusCode || 400,
+  const userId = getUserId(event)
+  const createTodoRequest = JSON.parse(event.body || '') as CreateTodoRequest
+  const item = await createTodoItem(userId, createTodoRequest)
 
-         body: JSON.stringify({
-           message: error?.message || 'error while trying to get create todo'
-         })
-       }
-    }
+  logger.info('Todo item was created', { userId, todoId: item.todoId })
+
+  return {
+    statusCode: 201,
+    body: JSON.stringify({ item })
   }
-)
+}
 
-handler.use(
-  cors({
-    credentials: true
-  })
-)
+export const handler = middy(createTodoHandler).use(cors({ credenials: true }))

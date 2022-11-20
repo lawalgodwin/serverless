@@ -1,45 +1,54 @@
 import 'source-map-support/register'
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
+
+import {
+  APIGatewayProxyEvent,
+  APIGatewayProxyResult,
+  APIGatewayProxyHandler
+} from 'aws-lambda'
 import * as middy from 'middy'
-import { cors, httpErrorHandler } from 'middy/middlewares'
+import { cors } from 'middy/middlewares'
+import { getAttachmentUploadUrl } from '../../businessLogic/todoItems'
+import { getUserId } from '../utils'
+import { createLogger } from '../../utils/logger'
 
-import { getAllTodoById, addAttachment } from '../../businessLayer/ToDo'
-import { UploadUrl } from '../../storageLayer/attatchmentUtils'
+const logger = createLogger('generateUploadUrl')
 
-const bucket_Name = process.env.ATTACHMENT_S3_BUCKET
+export const generateUploadUrlHandler: APIGatewayProxyHandler = async (
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> => {
+  logger.info('Caller event', event)
 
-export const handler = middy(
-  async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    try {
-      const todosId = event.pathParameters.todoId
-      // TODO: Return a presigned URL to upload a file for a TODO item with the provided id
-      const todos = await getAllTodoById(todosId)
-      todos.attachmentUrl = `https://${bucket_Name}.s3.amazonaws.com/${todosId}`
-      await addAttachment(todos)
+  const userId = getUserId(event)
+  const todoId = event.pathParameters?.todoId
 
-      const url = await UploadUrl(todosId)
-
-      return {
-        statusCode: 201,
-
-        body: JSON.stringify({
-          uploadUrl: url
-        })
-      }
-    } catch (error) {
-      return {
-        statusCode: error?.statusCode || 400,
-
-        body: JSON.stringify({
-          message: error?.message || 'error while trying to get url'
-        })
-      }
+  if (!todoId) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: 'Invalid todoId parameter' })
     }
   }
-)
 
-handler.use(httpErrorHandler()).use(
+  const uploadUrl = await getAttachmentUploadUrl(userId, todoId)
+  if (!uploadUrl) {
+    logger.info('Todo item does not exist', { userId, todoId })
+    return {
+      statusCode: 404,
+      body: JSON.stringify({
+        error: 'Todo item does not exist'
+      })
+    }
+  }
+
+  logger.info('Attachment upload url generated', { userId, todoId, uploadUrl })
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ uploadUrl })
+  }
+}
+
+export const handler = middy(generateUploadUrlHandler).use(
   cors({
-    credentials: true
+    credenials: true
   })
 )
